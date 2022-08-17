@@ -9,6 +9,7 @@
 #define MICROPY_ENABLE_FINALISER    (1)
 #define MICROPY_STACK_CHECK         (1)
 #define MICROPY_HELPER_REPL         (1)
+#define MICROPY_REPL_INFO           (1)
 #define MICROPY_ENABLE_SOURCE_LINE  (1)
 #define MICROPY_LONGINT_IMPL        (MICROPY_LONGINT_IMPL_MPZ)
 #define MICROPY_FLOAT_IMPL          (MICROPY_FLOAT_IMPL_FLOAT)
@@ -33,24 +34,12 @@
 // extra built in names to add to the global namespace
 #define MICROPY_PORT_BUILTINS \
 
-// extra built in modules to add to the list of known ones
-extern const struct _mp_obj_module_t os_module;
-extern const struct _mp_obj_module_t pyb_module;
-extern const struct _mp_obj_module_t time_module;
-#define MICROPY_PORT_BUILTIN_MODULES \
-    { MP_ROM_QSTR(MP_QSTR_pyb), MP_ROM_PTR(&pyb_module) }, \
-
 // extra constants
+extern const struct _mp_obj_module_t pyb_module;
 #define MICROPY_PORT_CONSTANTS \
     { MP_ROM_QSTR(MP_QSTR_pyb), MP_ROM_PTR(&pyb_module) }, \
 
 #define MP_STATE_PORT MP_STATE_VM
-
-#define MICROPY_PORT_ROOT_POINTERS \
-    const char *readline_hist[8]; \
-    mp_obj_t pin_class_mapper; \
-    mp_obj_t pin_class_map_dict; \
-    struct _pyb_uart_obj_t *pyb_stdio_uart; \
 
 // type definitions for the specific machine
 
@@ -61,8 +50,6 @@ typedef int32_t mp_int_t; // must be pointer size
 typedef unsigned int mp_uint_t; // must be pointer size
 typedef long mp_off_t;
 
-#define MP_PLAT_PRINT_STRN(str, len) mp_hal_stdout_tx_strn_cooked(str, len)
-
 // We have inlined IRQ functions for efficiency (they are generally
 // 1 machine instruction).
 //
@@ -71,27 +58,23 @@ typedef long mp_off_t;
 // value from disable_irq back to enable_irq.  If you really need
 // to know the machine-specific values, see irq.h.
 
-#ifndef __disable_irq
-#define __disable_irq() __asm__ volatile("CPSID i");
-#endif
-
-__attribute__(( always_inline )) static inline uint32_t __get_PRIMASK(void) {
+__attribute__((always_inline)) static inline uint32_t __get_PRIMASK(void) {
     uint32_t result;
     __asm volatile ("MRS %0, primask" : "=r" (result));
-    return(result);
+    return result;
 }
 
-__attribute__(( always_inline )) static inline void __set_PRIMASK(uint32_t priMask) {
+__attribute__((always_inline)) static inline void __set_PRIMASK(uint32_t priMask) {
     __asm volatile ("MSR primask, %0" : : "r" (priMask) : "memory");
 }
 
-__attribute__(( always_inline )) static inline void enable_irq(mp_uint_t state) {
+__attribute__((always_inline)) static inline void enable_irq(mp_uint_t state) {
     __set_PRIMASK(state);
 }
 
-__attribute__(( always_inline )) static inline mp_uint_t disable_irq(void) {
+__attribute__((always_inline)) static inline mp_uint_t disable_irq(void) {
     mp_uint_t state = __get_PRIMASK();
-    __disable_irq();
+    __asm__ volatile ("CPSID i");
     return state;
 }
 
@@ -116,10 +99,6 @@ __attribute__(( always_inline )) static inline mp_uint_t disable_irq(void) {
 #define MICROPY_HW_ENABLE_TIMER     (0)
 #define MICROPY_HW_ENABLE_SERVO     (0)
 #define MICROPY_HW_ENABLE_DAC       (0)
-#define MICROPY_HW_ENABLE_I2C1      (0)
-#define MICROPY_HW_ENABLE_SPI1      (0)
-#define MICROPY_HW_ENABLE_SPI3      (0)
-#define MICROPY_HW_ENABLE_CC3K      (0)
 
 #define MICROPY_HW_LED1             (pin_C5)
 #define MICROPY_HW_LED_OTYPE        (GPIO_MODE_OUTPUT_PP)

@@ -50,8 +50,7 @@ STATIC mp_obj_t ubluepy_characteristic_make_new(const mp_obj_type_t *type, size_
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
-    ubluepy_characteristic_obj_t *s = m_new_obj(ubluepy_characteristic_obj_t);
-    s->base.type = type;
+    ubluepy_characteristic_obj_t *s = mp_obj_malloc(ubluepy_characteristic_obj_t, type);
 
     mp_obj_t uuid_obj = args[0].u_obj;
 
@@ -59,11 +58,11 @@ STATIC mp_obj_t ubluepy_characteristic_make_new(const mp_obj_type_t *type, size_
         return MP_OBJ_FROM_PTR(s);
     }
 
-    if (MP_OBJ_IS_TYPE(uuid_obj, &ubluepy_uuid_type)) {
+    if (mp_obj_is_type(uuid_obj, &ubluepy_uuid_type)) {
         s->p_uuid = MP_OBJ_TO_PTR(uuid_obj);
         // (void)sd_characterstic_add(s);
     } else {
-        mp_raise_ValueError("Invalid UUID parameter");
+        mp_raise_ValueError(MP_ERROR_TEXT("Invalid UUID parameter"));
     }
 
     if (args[1].u_int > 0) {

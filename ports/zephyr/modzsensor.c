@@ -28,23 +28,22 @@
 
 #include "py/runtime.h"
 
-#include <zephyr.h>
-#include <sensor.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/drivers/sensor.h>
 
 #if MICROPY_PY_ZSENSOR
 
 typedef struct _mp_obj_sensor_t {
     mp_obj_base_t base;
-    struct device *dev;
+    const struct device *dev;
 } mp_obj_sensor_t;
 
 STATIC mp_obj_t sensor_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
     mp_arg_check_num(n_args, n_kw, 1, 1, false);
-    mp_obj_sensor_t *o = m_new_obj(mp_obj_sensor_t);
-    o->base.type = type;
+    mp_obj_sensor_t *o = mp_obj_malloc(mp_obj_sensor_t, type);
     o->dev = device_get_binding(mp_obj_str_get_str(args[0]));
     if (o->dev == NULL) {
-        mp_raise_ValueError("dev not found");
+        mp_raise_ValueError(MP_ERROR_TEXT("dev not found"));
     }
     return MP_OBJ_FROM_PTR(o);
 }
@@ -110,14 +109,14 @@ STATIC const mp_obj_type_t sensor_type = {
     { &mp_type_type },
     .name = MP_QSTR_Sensor,
     .make_new = sensor_make_new,
-    .locals_dict = (void*)&sensor_locals_dict,
+    .locals_dict = (void *)&sensor_locals_dict,
 };
 
 STATIC const mp_rom_map_elem_t mp_module_zsensor_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_zsensor) },
     { MP_ROM_QSTR(MP_QSTR_Sensor), MP_ROM_PTR(&sensor_type) },
 
-#define C(name) { MP_ROM_QSTR(MP_QSTR_ ## name), MP_ROM_INT(SENSOR_CHAN_ ## name) }
+#define C(name) { MP_ROM_QSTR(MP_QSTR_##name), MP_ROM_INT(SENSOR_CHAN_##name) }
     C(ACCEL_X),
     C(ACCEL_Y),
     C(ACCEL_Z),
@@ -127,7 +126,7 @@ STATIC const mp_rom_map_elem_t mp_module_zsensor_globals_table[] = {
     C(MAGN_X),
     C(MAGN_Y),
     C(MAGN_Z),
-    C(TEMP),
+    C(DIE_TEMP),
     C(PRESS),
     C(PROX),
     C(HUMIDITY),
@@ -140,7 +139,9 @@ STATIC MP_DEFINE_CONST_DICT(mp_module_zsensor_globals, mp_module_zsensor_globals
 
 const mp_obj_module_t mp_module_zsensor = {
     .base = { &mp_type_module },
-    .globals = (mp_obj_dict_t*)&mp_module_zsensor_globals,
+    .globals = (mp_obj_dict_t *)&mp_module_zsensor_globals,
 };
 
-#endif //MICROPY_PY_UHASHLIB
+MP_REGISTER_MODULE(MP_QSTR_zsensor, mp_module_zsensor);
+
+#endif // MICROPY_PY_UHASHLIB

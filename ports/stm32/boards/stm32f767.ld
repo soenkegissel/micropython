@@ -5,7 +5,7 @@
 /* Specify the memory areas */
 MEMORY
 {
-    FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 1024K
+    FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 2048K
     FLASH_ISR (rx)  : ORIGIN = 0x08000000, LENGTH = 32K     /* sector 0, 32K */
     FLASH_APP (rx)  : ORIGIN = 0x08008000, LENGTH = 2016K   /* sectors 1-11 3x32K 1*128K 7*256K */
     FLASH_FS (r)    : ORIGIN = 0x08008000, LENGTH = 96K     /* sectors 1, 2, 3 (32K each) */
@@ -18,13 +18,19 @@ MEMORY
 _minimum_stack_size = 2K;
 _minimum_heap_size = 16K;
 
-/* Define tho top end of the stack.  The stack is full descending so begins just
-   above last byte of RAM.  Note that EABI requires the stack to be 8-byte
-   aligned for a call. */
-_estack = ORIGIN(RAM) + LENGTH(RAM);
+/* Define the stack.  The stack is full descending so begins just above last byte
+   of RAM.  Note that EABI requires the stack to be 8-byte aligned for a call. */
+_estack = ORIGIN(RAM) + LENGTH(RAM) - _estack_reserve;
+_sstack = _estack - 32K; /* tunable */
 
 /* RAM extents for the garbage collector */
 _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 _heap_start = _ebss; /* heap starts just after statically allocated memory */
-_heap_end = 0x20078000; /* tunable */
+_heap_end = _sstack;
+
+/* Filesystem cache in RAM, and storage in flash */
+_micropy_hw_internal_flash_storage_ram_cache_start = ORIGIN(DTCM);
+_micropy_hw_internal_flash_storage_ram_cache_end = ORIGIN(DTCM) + LENGTH(DTCM);
+_micropy_hw_internal_flash_storage_start = ORIGIN(FLASH_FS);
+_micropy_hw_internal_flash_storage_end = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);

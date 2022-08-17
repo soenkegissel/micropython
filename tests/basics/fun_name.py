@@ -22,3 +22,13 @@ try:
     str((1).to_bytes.__name__)
 except AttributeError:
     pass
+
+# name of a function that has closed over variables
+# and also the name of the inner closure
+def outer():
+    x = 1
+    def inner():
+        return x
+    return inner
+print(outer.__name__)
+print(outer().__name__)

@@ -1,18 +1,3 @@
-# The following is a temporary hack to forefully undefine vars that might have
-# be defined by a calling Makefile (from recursive make).
-# TODO: Find a better way to be able to call this Makefile recursively.
-ifneq ($(findstring undefine,$(.FEATURES)),)
-override undefine COPT
-override undefine CFLAGS_EXTRA
-override undefine LDFLAGS_EXTRA
-override undefine MICROPY_FORCE_32BIT
-override undefine CROSS_COMPILE
-override undefine FROZEN_DIR
-override undefine FROZEN_MPY_DIR
-override undefine BUILD
-override undefine PROG
-endif
-
 include ../py/mkenv.mk
 
 # define main target
@@ -33,8 +18,8 @@ INC += -I$(TOP)
 
 # compiler settings
 CWARN = -Wall -Werror
-CWARN += -Wpointer-arith -Wuninitialized
-CFLAGS = $(INC) $(CWARN) -std=gnu99 $(CFLAGS_MOD) $(COPT) $(CFLAGS_EXTRA)
+CWARN += -Wextra -Wno-unused-parameter -Wpointer-arith
+CFLAGS += $(INC) $(CWARN) -std=gnu99 $(CFLAGS_MOD) $(COPT) $(CFLAGS_EXTRA)
 CFLAGS += -fdata-sections -ffunction-sections -fno-asynchronous-unwind-tables
 
 # Debugging/Optimization
@@ -57,12 +42,13 @@ else
 # Use gcc syntax for map file
 LDFLAGS_ARCH = -Wl,-Map=$@.map,--cref -Wl,--gc-sections
 endif
-LDFLAGS = $(LDFLAGS_MOD) $(LDFLAGS_ARCH) -lm $(LDFLAGS_EXTRA)
+LDFLAGS += $(LDFLAGS_MOD) $(LDFLAGS_ARCH) -lm $(LDFLAGS_EXTRA)
 
 # source files
 SRC_C = \
 	main.c \
 	gccollect.c \
+	shared/runtime/gchelper_generic.c \
 
 # Add fmode when compiling with mingw gcc
 COMPILER_TARGET := $(shell $(CC) -dumpmachine)

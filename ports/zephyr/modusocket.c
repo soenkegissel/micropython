@@ -31,14 +31,14 @@
 #include "py/stream.h"
 
 #include <stdio.h>
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 // Zephyr's generated version header
 #include <version.h>
-#include <net/net_context.h>
-#include <net/net_pkt.h>
-#include <net/dns_resolve.h>
+#include <zephyr/net/net_context.h>
+#include <zephyr/net/net_pkt.h>
+#include <zephyr/net/dns_resolve.h>
 #ifdef CONFIG_NET_SOCKETS
-#include <net/socket.h>
+#include <zephyr/net/socket.h>
 #endif
 
 #define DEBUG_PRINT 0
@@ -75,18 +75,19 @@ STATIC void socket_check_closed(socket_obj_t *socket) {
 
 STATIC void parse_inet_addr(socket_obj_t *socket, mp_obj_t addr_in, struct sockaddr *sockaddr) {
     // We employ the fact that port and address offsets are the same for IPv4 & IPv6
-    struct sockaddr_in *sockaddr_in = (struct sockaddr_in*)sockaddr;
+    struct sockaddr_in *sockaddr_in = (struct sockaddr_in *)sockaddr;
 
     mp_obj_t *addr_items;
     mp_obj_get_array_fixed_n(addr_in, 2, &addr_items);
-    sockaddr_in->sin_family = net_context_get_family((void*)socket->ctx);
+    void *context = zsock_get_context_object(socket->ctx);
+    sockaddr_in->sin_family = net_context_get_family(context);
     RAISE_ERRNO(net_addr_pton(sockaddr_in->sin_family, mp_obj_str_get_str(addr_items[0]), &sockaddr_in->sin_addr));
     sockaddr_in->sin_port = htons(mp_obj_get_int(addr_items[1]));
 }
 
 STATIC mp_obj_t format_inet_addr(struct sockaddr *addr, mp_obj_t port) {
     // We employ the fact that port and address offsets are the same for IPv4 & IPv6
-    struct sockaddr_in6 *sockaddr_in6 = (struct sockaddr_in6*)addr;
+    struct sockaddr_in6 *sockaddr_in6 = (struct sockaddr_in6 *)addr;
     char buf[40];
     net_addr_ntop(addr->sa_family, &sockaddr_in6->sin6_addr, buf, sizeof(buf));
     mp_obj_tuple_t *tuple = mp_obj_new_tuple(addr->sa_family == AF_INET ? 2 : 4, NULL);
@@ -94,7 +95,7 @@ STATIC mp_obj_t format_inet_addr(struct sockaddr *addr, mp_obj_t port) {
     tuple->items[0] = mp_obj_new_str(buf, strlen(buf));
     // We employ the fact that port offset is the same for IPv4 & IPv6
     // not filled in
-    //tuple->items[1] = mp_obj_new_int(ntohs(((struct sockaddr_in*)addr)->sin_port));
+    // tuple->items[1] = mp_obj_new_int(ntohs(((struct sockaddr_in*)addr)->sin_port));
     tuple->items[1] = port;
 
     if (addr->sa_family == AF_INET6) {
@@ -119,8 +120,8 @@ STATIC void socket_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kin
     if (self->ctx == -1) {
         mp_printf(print, "<socket NULL>");
     } else {
-        struct net_context *ctx = (void*)self->ctx;
-        mp_printf(print, "<socket %p type=%d>", ctx, net_context_get_type(ctx));
+        void *context = zsock_get_context_object(self->ctx);
+        mp_printf(print, "<socket %p type=%d>", self->ctx, net_context_get_type(context));
     }
 }
 
@@ -184,17 +185,23 @@ STATIC mp_obj_t socket_connect(mp_obj_t self_in, mp_obj_t addr_in) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(socket_connect_obj, socket_connect);
 
-STATIC mp_obj_t socket_listen(mp_obj_t self_in, mp_obj_t backlog_in) {
-    socket_obj_t *socket = self_in;
+// method socket.listen([backlog])
+STATIC mp_obj_t socket_listen(size_t n_args, const mp_obj_t *args) {
+    socket_obj_t *socket = args[0];
     socket_check_closed(socket);
 
-    mp_int_t backlog = mp_obj_get_int(backlog_in);
+    mp_int_t backlog = MICROPY_PY_USOCKET_LISTEN_BACKLOG_DEFAULT;
+    if (n_args > 1) {
+        backlog = mp_obj_get_int(args[1]);
+        backlog = (backlog < 0) ? 0 : backlog;
+    }
+
     int res = zsock_listen(socket->ctx, backlog);
     RAISE_SOCK_ERRNO(res);
 
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(socket_listen_obj, socket_listen);
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(socket_listen_obj, 1, 2, socket_listen);
 
 STATIC mp_obj_t socket_accept(mp_obj_t self_in) {
     socket_obj_t *socket = self_in;
@@ -462,7 +469,9 @@ STATIC MP_DEFINE_CONST_DICT(mp_module_usocket_globals, mp_module_usocket_globals
 
 const mp_obj_module_t mp_module_usocket = {
     .base = { &mp_type_module },
-    .globals = (mp_obj_dict_t*)&mp_module_usocket_globals,
+    .globals = (mp_obj_dict_t *)&mp_module_usocket_globals,
 };
+
+MP_REGISTER_MODULE(MP_QSTR_usocket, mp_module_usocket);
 
 #endif // MICROPY_PY_USOCKET

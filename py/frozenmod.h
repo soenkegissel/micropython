@@ -3,7 +3,8 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2014 Damien P. George
+ * Copyright (c) 2015 Paul Sokolovsky
+ * Copyright (c) 2016 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +27,7 @@
 #ifndef MICROPY_INCLUDED_PY_FROZENMOD_H
 #define MICROPY_INCLUDED_PY_FROZENMOD_H
 
-#include "py/lexer.h"
+#include "py/builtin.h"
 
 enum {
     MP_FROZEN_NONE,
@@ -34,8 +35,6 @@ enum {
     MP_FROZEN_MPY,
 };
 
-int mp_find_frozen_module(const char *str, size_t len, void **data);
-const char *mp_find_frozen_str(const char *str, size_t *len);
-mp_import_stat_t mp_frozen_stat(const char *str);
+mp_import_stat_t mp_find_frozen_module(const char *str, int *frozen_type, void **data);
 
 #endif // MICROPY_INCLUDED_PY_FROZENMOD_H

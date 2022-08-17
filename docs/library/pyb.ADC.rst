@@ -19,11 +19,11 @@ Usage::
     val = adc.read_core_vref()          # read MCU VREF
     val = adc.read_vref()               # read MCU supply voltage
 
- 
+
 Constructors
 ------------
 
-.. class:: pyb.ADC(pin)
+.. class:: ADC(pin)
 
    Create an ADC object associated with the given pin.
    This allows you to then read analog values on that pin.

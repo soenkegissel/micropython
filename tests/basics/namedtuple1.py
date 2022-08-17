@@ -24,6 +24,9 @@ for t in T(1, 2), T(bar=1, foo=2):
 
     print(isinstance(t, tuple))
 
+    # Check tuple can compare equal to namedtuple with same elements
+    print(t == (t[0], t[1]), (t[0], t[1]) == t)
+
 # Create using positional and keyword args
 print(T(3, bar=4))
 
@@ -82,3 +85,8 @@ print(t.foo, t.bar)
 # Not implemented so far
 #T2 = namedtuple("TupComma", "foo,bar")
 #t = T2(1, 2)
+
+# Creating an empty namedtuple should not segfault
+T5 = namedtuple("TupEmpty", [])
+t = T5()
+print(t)

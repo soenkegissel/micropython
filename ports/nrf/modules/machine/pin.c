@@ -37,8 +37,14 @@
 #include "nrf_gpio.h"
 #include "nrfx_gpiote.h"
 
-extern const pin_obj_t machine_pin_obj[];
-extern const uint8_t machine_pin_num_of_pins;
+#if defined(NRF52840_XXAA)
+#define NUM_OF_PINS 48
+#else
+#define NUM_OF_PINS 32
+#endif
+
+extern const pin_obj_t machine_board_pin_obj[];
+extern const uint8_t machine_pin_num_of_board_pins;
 
 /// \moduleref machine
 /// \class Pin - control I/O pins
@@ -114,7 +120,7 @@ void pin_init0(void) {
     }
     // Initialize GPIOTE if not done yet.
     if (!nrfx_gpiote_is_init()) {
-        nrfx_gpiote_init();
+        nrfx_gpiote_init(NRFX_GPIOTE_DEFAULT_CONFIG_IRQ_PRIORITY);
     }
 
     #if PIN_DEBUG
@@ -126,17 +132,17 @@ void pin_init0(void) {
 const pin_obj_t *pin_find(mp_obj_t user_obj) {
     const pin_obj_t *pin_obj;
     // If pin is SMALL_INT
-    if (MP_OBJ_IS_SMALL_INT(user_obj)) {
-	uint8_t value = MP_OBJ_SMALL_INT_VALUE(user_obj);
-        for (uint8_t i = 0; i < machine_pin_num_of_pins; i++) {
-            if (machine_pin_obj[i].pin == value) {
-                return &machine_pin_obj[i];
-	    }
-	}
+    if (mp_obj_is_small_int(user_obj)) {
+        uint8_t value = MP_OBJ_SMALL_INT_VALUE(user_obj);
+        for (uint8_t i = 0; i < machine_pin_num_of_board_pins; i++) {
+            if (machine_board_pin_obj[i].pin == value) {
+                return &machine_board_pin_obj[i];
+            }
+        }
     }
 
     // If a pin was provided, then use it
-    if (MP_OBJ_IS_TYPE(user_obj, &pin_type)) {
+    if (mp_obj_is_type(user_obj, &pin_type)) {
         pin_obj = user_obj;
         if (pin_class_debug) {
             printf("Pin map passed pin ");
@@ -149,8 +155,8 @@ const pin_obj_t *pin_find(mp_obj_t user_obj) {
     if (MP_STATE_PORT(pin_class_mapper) != mp_const_none) {
         pin_obj = mp_call_function_1(MP_STATE_PORT(pin_class_mapper), user_obj);
         if (pin_obj != mp_const_none) {
-            if (!MP_OBJ_IS_TYPE(pin_obj, &pin_type)) {
-                mp_raise_ValueError("Pin.mapper didn't return a Pin object");
+            if (!mp_obj_is_type(pin_obj, &pin_type)) {
+                mp_raise_ValueError(MP_ERROR_TEXT("Pin.mapper didn't return a Pin object"));
             }
             if (pin_class_debug) {
                 printf("Pin.mapper maps ");
@@ -207,7 +213,7 @@ const pin_obj_t *pin_find(mp_obj_t user_obj) {
         return pin_obj;
     }
 
-    mp_raise_ValueError("not a valid pin identifier");
+    mp_raise_ValueError(MP_ERROR_TEXT("not a valid pin identifier"));
 }
 
 /// \method __str__()
@@ -364,8 +370,8 @@ STATIC mp_obj_t pin_obj_init_helper(const pin_obj_t *self, mp_uint_t n_args, con
     nrf_gpio_pin_dir_t mode = (nrf_gpio_pin_dir_t)args[0].u_int;
 
     // Connect input or not
-    nrf_gpio_pin_input_t input = (mode == NRF_GPIO_PIN_DIR_INPUT) ? NRF_GPIO_PIN_INPUT_CONNECT 
-	                                                          : NRF_GPIO_PIN_INPUT_DISCONNECT;
+    nrf_gpio_pin_input_t input = (mode == NRF_GPIO_PIN_DIR_INPUT) ? NRF_GPIO_PIN_INPUT_CONNECT
+                                                                  : NRF_GPIO_PIN_INPUT_DISCONNECT;
 
     if (mode == NRF_GPIO_PIN_DIR_OUTPUT || mode == NRF_GPIO_PIN_DIR_INPUT) {
         nrf_gpio_cfg(self->pin,
@@ -375,7 +381,7 @@ STATIC mp_obj_t pin_obj_init_helper(const pin_obj_t *self, mp_uint_t n_args, con
                      NRF_GPIO_PIN_S0S1,
                      NRF_GPIO_PIN_NOSENSE);
     } else {
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "invalid pin mode: %d", mode));
+        mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("invalid pin mode: %d"), mode);
     }
 
     return mp_const_none;
@@ -496,7 +502,7 @@ STATIC void pin_common_irq_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t 
 }
 
 STATIC mp_obj_t pin_irq(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
-	enum {ARG_handler, ARG_trigger, ARG_wake};
+    enum {ARG_handler, ARG_trigger, ARG_wake};
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_handler, MP_ARG_OBJ | MP_ARG_REQUIRED,  {.u_obj = mp_const_none} },
         { MP_QSTR_trigger, MP_ARG_INT,  {.u_int = NRF_GPIOTE_POLARITY_LOTOHI | NRF_GPIOTE_POLARITY_HITOLO} },
@@ -671,3 +677,7 @@ const mp_obj_type_t pin_af_type = {
     .print = pin_af_obj_print,
     .locals_dict = (mp_obj_dict_t*)&pin_af_locals_dict,
 };
+
+MP_REGISTER_ROOT_POINTER(mp_obj_t pin_class_mapper);
+MP_REGISTER_ROOT_POINTER(mp_obj_t pin_class_map_dict);
+MP_REGISTER_ROOT_POINTER(mp_obj_t pin_irq_handlers[NUM_OF_PINS]);

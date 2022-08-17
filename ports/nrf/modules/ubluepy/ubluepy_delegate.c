@@ -38,8 +38,7 @@ STATIC void ubluepy_delegate_print(const mp_print_t *print, mp_obj_t o, mp_print
 }
 
 STATIC mp_obj_t ubluepy_delegate_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    ubluepy_delegate_obj_t *s = m_new_obj(ubluepy_delegate_obj_t);
-    s->base.type = type;
+    ubluepy_delegate_obj_t *s = mp_obj_malloc(ubluepy_delegate_obj_t, type);
 
     return MP_OBJ_FROM_PTR(s);
 }
@@ -72,7 +71,7 @@ STATIC const mp_rom_map_elem_t ubluepy_delegate_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_handleConnection),   MP_ROM_PTR(&ubluepy_delegate_handle_conn_obj) },
     { MP_ROM_QSTR(MP_QSTR_handleNotification), MP_ROM_PTR(&ubluepy_delegate_handle_notif_obj) },
 #if 0
-	{ MP_ROM_QSTR(MP_QSTR_handleDiscovery),    MP_ROM_PTR(&ubluepy_delegate_handle_disc_obj) },
+    { MP_ROM_QSTR(MP_QSTR_handleDiscovery),    MP_ROM_PTR(&ubluepy_delegate_handle_disc_obj) },
 #endif
 };
 

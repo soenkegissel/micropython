@@ -26,14 +26,20 @@
 
 #include "py/runtime.h"
 #include "py/mperrno.h"
+#include "py/mphal.h"
+#include "py/mpthread.h"
 #include "extmod/vfs.h"
 #include "extmod/vfs_posix.h"
 
 #if MICROPY_VFS_POSIX
 
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#ifdef _MSC_VER
+#include <direct.h> // For mkdir etc.
+#endif
 
 typedef struct _mp_obj_vfs_posix_t {
     mp_obj_base_t base;
@@ -62,7 +68,7 @@ STATIC mp_obj_t vfs_posix_get_path_obj(mp_obj_vfs_posix_t *self, mp_obj_t path) 
     }
 }
 
-STATIC mp_obj_t vfs_posix_fun1_helper(mp_obj_t self_in, mp_obj_t path_in, int (*f)(const char*)) {
+STATIC mp_obj_t vfs_posix_fun1_helper(mp_obj_t self_in, mp_obj_t path_in, int (*f)(const char *)) {
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
     int ret = f(vfs_posix_get_path_str(self, path_in));
     if (ret != 0) {
@@ -92,8 +98,7 @@ STATIC mp_import_stat_t mp_vfs_posix_import_stat(void *self_in, const char *path
 STATIC mp_obj_t vfs_posix_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
     mp_arg_check_num(n_args, n_kw, 0, 1, false);
 
-    mp_obj_vfs_posix_t *vfs = m_new_obj(mp_obj_vfs_posix_t);
-    vfs->base.type = type;
+    mp_obj_vfs_posix_t *vfs = mp_obj_malloc(mp_obj_vfs_posix_t, type);
     vstr_init(&vfs->root, 0);
     if (n_args == 1) {
         vstr_add_str(&vfs->root, mp_obj_str_get_str(args[0]));
@@ -130,10 +135,10 @@ STATIC mp_obj_t vfs_posix_open(mp_obj_t self_in, mp_obj_t path_in, mp_obj_t mode
         && (strchr(mode, 'w') != NULL || strchr(mode, 'a') != NULL || strchr(mode, '+') != NULL)) {
         mp_raise_OSError(MP_EROFS);
     }
-    if (!MP_OBJ_IS_SMALL_INT(path_in)) {
+    if (!mp_obj_is_small_int(path_in)) {
         path_in = vfs_posix_get_path_obj(self, path_in);
     }
-    return mp_vfs_posix_file_open(&mp_type_textio, path_in, mode_in);
+    return mp_vfs_posix_file_open(&mp_type_vfs_posix_textio, path_in, mode_in);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_3(vfs_posix_open_obj, vfs_posix_open);
 
@@ -169,12 +174,15 @@ STATIC mp_obj_t vfs_posix_ilistdir_it_iternext(mp_obj_t self_in) {
     }
 
     for (;;) {
+        MP_THREAD_GIL_EXIT();
         struct dirent *dirent = readdir(self->dir);
         if (dirent == NULL) {
             closedir(self->dir);
+            MP_THREAD_GIL_ENTER();
             self->dir = NULL;
             return MP_OBJ_STOP_ITERATION;
         }
+        MP_THREAD_GIL_ENTER();
         const char *fn = dirent->d_name;
 
         if (fn[0] == '.' && (fn[1] == 0 || fn[1] == '.')) {
@@ -188,7 +196,7 @@ STATIC mp_obj_t vfs_posix_ilistdir_it_iternext(mp_obj_t self_in) {
         if (self->is_str) {
             t->items[0] = mp_obj_new_str(fn, strlen(fn));
         } else {
-            t->items[0] = mp_obj_new_bytes((const byte*)fn, strlen(fn));
+            t->items[0] = mp_obj_new_bytes((const byte *)fn, strlen(fn));
         }
 
         #ifdef _DIRENT_HAVE_D_TYPE
@@ -220,15 +228,16 @@ STATIC mp_obj_t vfs_posix_ilistdir_it_iternext(mp_obj_t self_in) {
 
 STATIC mp_obj_t vfs_posix_ilistdir(mp_obj_t self_in, mp_obj_t path_in) {
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
-    vfs_posix_ilistdir_it_t *iter = m_new_obj(vfs_posix_ilistdir_it_t);
-    iter->base.type = &mp_type_polymorph_iter;
+    vfs_posix_ilistdir_it_t *iter = mp_obj_malloc(vfs_posix_ilistdir_it_t, &mp_type_polymorph_iter);
     iter->iternext = vfs_posix_ilistdir_it_iternext;
     iter->is_str = mp_obj_get_type(path_in) == &mp_type_str;
     const char *path = vfs_posix_get_path_str(self, path_in);
     if (path[0] == '\0') {
         path = ".";
     }
+    MP_THREAD_GIL_EXIT();
     iter->dir = opendir(path);
+    MP_THREAD_GIL_ENTER();
     if (iter->dir == NULL) {
         mp_raise_OSError(errno);
     }
@@ -244,7 +253,14 @@ typedef struct _mp_obj_listdir_t {
 
 STATIC mp_obj_t vfs_posix_mkdir(mp_obj_t self_in, mp_obj_t path_in) {
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
-    int ret = mkdir(vfs_posix_get_path_str(self, path_in), 0777);
+    const char *path = vfs_posix_get_path_str(self, path_in);
+    MP_THREAD_GIL_EXIT();
+    #ifdef _WIN32
+    int ret = mkdir(path);
+    #else
+    int ret = mkdir(path, 0777);
+    #endif
+    MP_THREAD_GIL_ENTER();
     if (ret != 0) {
         mp_raise_OSError(errno);
     }
@@ -261,7 +277,9 @@ STATIC mp_obj_t vfs_posix_rename(mp_obj_t self_in, mp_obj_t old_path_in, mp_obj_
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
     const char *old_path = vfs_posix_get_path_str(self, old_path_in);
     const char *new_path = vfs_posix_get_path_str(self, new_path_in);
+    MP_THREAD_GIL_EXIT();
     int ret = rename(old_path, new_path);
+    MP_THREAD_GIL_ENTER();
     if (ret != 0) {
         mp_raise_OSError(errno);
     }
@@ -277,24 +295,25 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_2(vfs_posix_rmdir_obj, vfs_posix_rmdir);
 STATIC mp_obj_t vfs_posix_stat(mp_obj_t self_in, mp_obj_t path_in) {
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
     struct stat sb;
-    int ret = stat(vfs_posix_get_path_str(self, path_in), &sb);
-    if (ret != 0) {
-        mp_raise_OSError(errno);
-    }
+    const char *path = vfs_posix_get_path_str(self, path_in);
+    int ret;
+    MP_HAL_RETRY_SYSCALL(ret, stat(path, &sb), mp_raise_OSError(err));
     mp_obj_tuple_t *t = MP_OBJ_TO_PTR(mp_obj_new_tuple(10, NULL));
     t->items[0] = MP_OBJ_NEW_SMALL_INT(sb.st_mode);
-    t->items[1] = MP_OBJ_NEW_SMALL_INT(sb.st_ino);
-    t->items[2] = MP_OBJ_NEW_SMALL_INT(sb.st_dev);
-    t->items[3] = MP_OBJ_NEW_SMALL_INT(sb.st_nlink);
-    t->items[4] = MP_OBJ_NEW_SMALL_INT(sb.st_uid);
-    t->items[5] = MP_OBJ_NEW_SMALL_INT(sb.st_gid);
-    t->items[6] = MP_OBJ_NEW_SMALL_INT(sb.st_size);
-    t->items[7] = MP_OBJ_NEW_SMALL_INT(sb.st_atime);
-    t->items[8] = MP_OBJ_NEW_SMALL_INT(sb.st_mtime);
-    t->items[9] = MP_OBJ_NEW_SMALL_INT(sb.st_ctime);
+    t->items[1] = mp_obj_new_int_from_uint(sb.st_ino);
+    t->items[2] = mp_obj_new_int_from_uint(sb.st_dev);
+    t->items[3] = mp_obj_new_int_from_uint(sb.st_nlink);
+    t->items[4] = mp_obj_new_int_from_uint(sb.st_uid);
+    t->items[5] = mp_obj_new_int_from_uint(sb.st_gid);
+    t->items[6] = mp_obj_new_int_from_uint(sb.st_size);
+    t->items[7] = mp_obj_new_int_from_uint(sb.st_atime);
+    t->items[8] = mp_obj_new_int_from_uint(sb.st_mtime);
+    t->items[9] = mp_obj_new_int_from_uint(sb.st_ctime);
     return MP_OBJ_FROM_PTR(t);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(vfs_posix_stat_obj, vfs_posix_stat);
+
+#if MICROPY_PY_UOS_STATVFS
 
 #ifdef __ANDROID__
 #define USE_STATFS 1
@@ -320,10 +339,8 @@ STATIC mp_obj_t vfs_posix_statvfs(mp_obj_t self_in, mp_obj_t path_in) {
     mp_obj_vfs_posix_t *self = MP_OBJ_TO_PTR(self_in);
     STRUCT_STATVFS sb;
     const char *path = vfs_posix_get_path_str(self, path_in);
-    int ret = STATVFS(path, &sb);
-    if (ret != 0) {
-        mp_raise_OSError(errno);
-    }
+    int ret;
+    MP_HAL_RETRY_SYSCALL(ret, STATVFS(path, &sb), mp_raise_OSError(err));
     mp_obj_tuple_t *t = MP_OBJ_TO_PTR(mp_obj_new_tuple(10, NULL));
     t->items[0] = MP_OBJ_NEW_SMALL_INT(sb.f_bsize);
     t->items[1] = MP_OBJ_NEW_SMALL_INT(sb.f_frsize);
@@ -339,6 +356,8 @@ STATIC mp_obj_t vfs_posix_statvfs(mp_obj_t self_in, mp_obj_t path_in) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(vfs_posix_statvfs_obj, vfs_posix_statvfs);
 
+#endif
+
 STATIC const mp_rom_map_elem_t vfs_posix_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_mount), MP_ROM_PTR(&vfs_posix_mount_obj) },
     { MP_ROM_QSTR(MP_QSTR_umount), MP_ROM_PTR(&vfs_posix_umount_obj) },
@@ -352,7 +371,9 @@ STATIC const mp_rom_map_elem_t vfs_posix_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_rename), MP_ROM_PTR(&vfs_posix_rename_obj) },
     { MP_ROM_QSTR(MP_QSTR_rmdir), MP_ROM_PTR(&vfs_posix_rmdir_obj) },
     { MP_ROM_QSTR(MP_QSTR_stat), MP_ROM_PTR(&vfs_posix_stat_obj) },
+    #if MICROPY_PY_UOS_STATVFS
     { MP_ROM_QSTR(MP_QSTR_statvfs), MP_ROM_PTR(&vfs_posix_statvfs_obj) },
+    #endif
 };
 STATIC MP_DEFINE_CONST_DICT(vfs_posix_locals_dict, vfs_posix_locals_dict_table);
 
@@ -365,7 +386,7 @@ const mp_obj_type_t mp_type_vfs_posix = {
     .name = MP_QSTR_VfsPosix,
     .make_new = vfs_posix_make_new,
     .protocol = &vfs_posix_proto,
-    .locals_dict = (mp_obj_dict_t*)&vfs_posix_locals_dict,
+    .locals_dict = (mp_obj_dict_t *)&vfs_posix_locals_dict,
 };
 
 #endif // MICROPY_VFS_POSIX

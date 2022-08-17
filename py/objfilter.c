@@ -36,15 +36,14 @@ typedef struct _mp_obj_filter_t {
 
 STATIC mp_obj_t filter_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
     mp_arg_check_num(n_args, n_kw, 2, 2, false);
-    mp_obj_filter_t *o = m_new_obj(mp_obj_filter_t);
-    o->base.type = type;
+    mp_obj_filter_t *o = mp_obj_malloc(mp_obj_filter_t, type);
     o->fun = args[0];
     o->iter = mp_getiter(args[1], NULL);
     return MP_OBJ_FROM_PTR(o);
 }
 
 STATIC mp_obj_t filter_iternext(mp_obj_t self_in) {
-    mp_check_self(MP_OBJ_IS_TYPE(self_in, &mp_type_filter));
+    mp_check_self(mp_obj_is_type(self_in, &mp_type_filter));
     mp_obj_filter_t *self = MP_OBJ_TO_PTR(self_in);
     mp_obj_t next;
     while ((next = mp_iternext(self->iter)) != MP_OBJ_STOP_ITERATION) {

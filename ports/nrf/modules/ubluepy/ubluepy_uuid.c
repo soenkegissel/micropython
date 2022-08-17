@@ -57,8 +57,7 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
-    ubluepy_uuid_obj_t *s = m_new_obj(ubluepy_uuid_obj_t);
-    s->base.type = type;
+    ubluepy_uuid_obj_t *s = mp_obj_malloc(ubluepy_uuid_obj_t, type);
 
     mp_obj_t uuid_obj = args[ARG_NEW_UUID].u_obj;
 
@@ -66,12 +65,13 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
         return MP_OBJ_FROM_PTR(s);
     }
 
-    if (MP_OBJ_IS_INT(uuid_obj)) {
+    if (mp_obj_is_int(uuid_obj)) {
         s->type = UBLUEPY_UUID_16_BIT;
         s->value[1] = (((uint16_t)mp_obj_get_int(uuid_obj)) >> 8) & 0xFF;
         s->value[0] = ((uint8_t)mp_obj_get_int(uuid_obj)) & 0xFF;
-    } else if (MP_OBJ_IS_STR(uuid_obj)) {
-        GET_STR_DATA_LEN(uuid_obj, str_data, str_len);
+    } else if (mp_obj_is_str(uuid_obj)) {
+        size_t str_len;
+        const byte *str_data = (const byte *)mp_obj_str_get_data(uuid_obj, &str_len);
         if (str_len == 6) { // Assume hex digit prefixed with 0x
             s->type = UBLUEPY_UUID_16_BIT;
             s->value[0]  = unichar_xdigit_value(str_data[5]);
@@ -122,16 +122,16 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
 
             ble_drv_uuid_add_vs(buffer, &s->uuid_vs_idx);
         } else {
-            mp_raise_ValueError("Invalid UUID string length");
+            mp_raise_ValueError(MP_ERROR_TEXT("Invalid UUID string length"));
         }
-    } else if (MP_OBJ_IS_TYPE(uuid_obj, &ubluepy_uuid_type)) {
+    } else if (mp_obj_is_type(uuid_obj, &ubluepy_uuid_type)) {
         // deep copy instance
         ubluepy_uuid_obj_t * p_old = MP_OBJ_TO_PTR(uuid_obj);
         s->type     = p_old->type;
         s->value[0] = p_old->value[0];
         s->value[1] = p_old->value[1];
     } else {
-        mp_raise_ValueError("Invalid UUID parameter");
+        mp_raise_ValueError(MP_ERROR_TEXT("Invalid UUID parameter"));
     }
 
     return MP_OBJ_FROM_PTR(s);

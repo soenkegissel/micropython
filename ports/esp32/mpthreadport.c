@@ -27,10 +27,10 @@
 
 #include "stdio.h"
 
-#include "py/mpconfig.h"
-#include "py/mpstate.h"
+#include "py/runtime.h"
 #include "py/gc.h"
 #include "py/mpthread.h"
+#include "py/mphal.h"
 #include "mpthreadport.h"
 
 #include "esp_task.h"
@@ -42,37 +42,42 @@
 #define MP_THREAD_PRIORITY                              (ESP_TASK_PRIO_MIN + 1)
 
 // this structure forms a linked list, one node per active thread
-typedef struct _thread_t {
+typedef struct _mp_thread_t {
     TaskHandle_t id;        // system id of thread
     int ready;              // whether the thread is ready and running
     void *arg;              // thread Python args, a GC root pointer
     void *stack;            // pointer to the stack
     size_t stack_len;       // number of words in the stack
-    struct _thread_t *next;
-} thread_t;
+    struct _mp_thread_t *next;
+} mp_thread_t;
 
 // the mutex controls access to the linked list
 STATIC mp_thread_mutex_t thread_mutex;
-STATIC thread_t thread_entry0;
-STATIC thread_t *thread; // root pointer, handled by mp_thread_gc_others
+STATIC mp_thread_t thread_entry0;
+STATIC mp_thread_t *thread = NULL; // root pointer, handled by mp_thread_gc_others
 
 void mp_thread_init(void *stack, uint32_t stack_len) {
     mp_thread_set_state(&mp_state_ctx.thread);
     // create the first entry in the linked list of all threads
-    thread = &thread_entry0;
-    thread->id = xTaskGetCurrentTaskHandle();
-    thread->ready = 1;
-    thread->arg = NULL;
-    thread->stack = stack;
-    thread->stack_len = stack_len;
-    thread->next = NULL;
+    thread_entry0.id = xTaskGetCurrentTaskHandle();
+    thread_entry0.ready = 1;
+    thread_entry0.arg = NULL;
+    thread_entry0.stack = stack;
+    thread_entry0.stack_len = stack_len;
+    thread_entry0.next = NULL;
     mp_thread_mutex_init(&thread_mutex);
+
+    // memory barrier to ensure above data is committed
+    __sync_synchronize();
+
+    // vPortCleanUpTCB needs the thread ready after thread_mutex is ready
+    thread = &thread_entry0;
 }
 
 void mp_thread_gc_others(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
-        gc_collect_root((void**)&th, 1);
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
+        gc_collect_root((void **)&th, 1);
         gc_collect_root(&th->arg, 1); // probably not needed
         if (th->id == xTaskGetCurrentTaskHandle()) {
             continue;
@@ -80,7 +85,7 @@ void mp_thread_gc_others(void) {
         if (!th->ready) {
             continue;
         }
-        gc_collect_root(th->stack, th->stack_len); // probably not needed
+        gc_collect_root(th->stack, th->stack_len);
     }
     mp_thread_mutex_unlock(&thread_mutex);
 }
@@ -89,13 +94,13 @@ mp_state_thread_t *mp_thread_get_state(void) {
     return pvTaskGetThreadLocalStoragePointer(NULL, 1);
 }
 
-void mp_thread_set_state(void *state) {
+void mp_thread_set_state(mp_state_thread_t *state) {
     vTaskSetThreadLocalStoragePointer(NULL, 1, state);
 }
 
 void mp_thread_start(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
         if (th->id == xTaskGetCurrentTaskHandle()) {
             th->ready = 1;
             break;
@@ -104,17 +109,18 @@ void mp_thread_start(void) {
     mp_thread_mutex_unlock(&thread_mutex);
 }
 
-STATIC void *(*ext_thread_entry)(void*) = NULL;
+STATIC void *(*ext_thread_entry)(void *) = NULL;
 
 STATIC void freertos_entry(void *arg) {
     if (ext_thread_entry) {
         ext_thread_entry(arg);
     }
     vTaskDelete(NULL);
-    for (;;);
+    for (;;) {;
+    }
 }
 
-void mp_thread_create_ex(void *(*entry)(void*), void *arg, size_t *stack_size, int priority, char *name) {
+void mp_thread_create_ex(void *(*entry)(void *), void *arg, size_t *stack_size, int priority, char *name) {
     // store thread entry function into a global variable so we can access it
     ext_thread_entry = entry;
 
@@ -125,38 +131,38 @@ void mp_thread_create_ex(void *(*entry)(void*), void *arg, size_t *stack_size, i
     }
 
     // Allocate linked-list node (must be outside thread_mutex lock)
-    thread_t *th = m_new_obj(thread_t);
+    mp_thread_t *th = m_new_obj(mp_thread_t);
 
     mp_thread_mutex_lock(&thread_mutex, 1);
 
     // create thread
-    BaseType_t result = xTaskCreate(freertos_entry, name, *stack_size / sizeof(StackType_t), arg, priority, &th->id);
+    BaseType_t result = xTaskCreatePinnedToCore(freertos_entry, name, *stack_size / sizeof(StackType_t), arg, priority, &th->id, MP_TASK_COREID);
     if (result != pdPASS) {
         mp_thread_mutex_unlock(&thread_mutex);
-        nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "can't create thread"));
+        mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("can't create thread"));
     }
-
-    // adjust the stack_size to provide room to recover from hitting the limit
-    *stack_size -= 1024;
 
     // add thread to linked list of all threads
     th->ready = 0;
     th->arg = arg;
     th->stack = pxTaskGetStackStart(th->id);
-    th->stack_len = *stack_size / sizeof(StackType_t);
+    th->stack_len = *stack_size / sizeof(uintptr_t);
     th->next = thread;
     thread = th;
+
+    // adjust the stack_size to provide room to recover from hitting the limit
+    *stack_size -= 1024;
 
     mp_thread_mutex_unlock(&thread_mutex);
 }
 
-void mp_thread_create(void *(*entry)(void*), void *arg, size_t *stack_size) {
+void mp_thread_create(void *(*entry)(void *), void *arg, size_t *stack_size) {
     mp_thread_create_ex(entry, arg, stack_size, MP_THREAD_PRIORITY, "mp_thread");
 }
 
 void mp_thread_finish(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
         if (th->id == xTaskGetCurrentTaskHandle()) {
             th->ready = 0;
             break;
@@ -165,20 +171,25 @@ void mp_thread_finish(void) {
     mp_thread_mutex_unlock(&thread_mutex);
 }
 
+// This is called from the FreeRTOS idle task and is not within Python context,
+// so MP_STATE_THREAD is not valid and it does not have the GIL.
 void vPortCleanUpTCB(void *tcb) {
-    thread_t *prev = NULL;
+    if (thread == NULL) {
+        // threading not yet initialised
+        return;
+    }
+    mp_thread_t *prev = NULL;
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; prev = th, th = th->next) {
+    for (mp_thread_t *th = thread; th != NULL; prev = th, th = th->next) {
         // unlink the node from the list
-        if ((void*)th->id == tcb) {
+        if ((void *)th->id == tcb) {
             if (prev != NULL) {
                 prev->next = th->next;
             } else {
                 // move the start pointer
                 thread = th->next;
             }
-            // explicitly release all its memory
-            m_del(thread_t, th, 1);
+            // The "th" memory will eventually be reclaimed by the GC.
             break;
         }
     }
@@ -186,11 +197,14 @@ void vPortCleanUpTCB(void *tcb) {
 }
 
 void mp_thread_mutex_init(mp_thread_mutex_t *mutex) {
-    mutex->handle = xSemaphoreCreateMutexStatic(&mutex->buffer);
+    // Need a binary semaphore so a lock can be acquired on one Python thread
+    // and then released on another.
+    mutex->handle = xSemaphoreCreateBinaryStatic(&mutex->buffer);
+    xSemaphoreGive(mutex->handle);
 }
 
 int mp_thread_mutex_lock(mp_thread_mutex_t *mutex, int wait) {
-    return (pdTRUE == xSemaphoreTake(mutex->handle, wait ? portMAX_DELAY : 0));
+    return pdTRUE == xSemaphoreTake(mutex->handle, wait ? portMAX_DELAY : 0);
 }
 
 void mp_thread_mutex_unlock(mp_thread_mutex_t *mutex) {
@@ -202,7 +216,7 @@ void mp_thread_deinit(void) {
         // Find a task to delete
         TaskHandle_t id = NULL;
         mp_thread_mutex_lock(&thread_mutex, 1);
-        for (thread_t *th = thread; th != NULL; th = th->next) {
+        for (mp_thread_t *th = thread; th != NULL; th = th->next) {
             // Don't delete the current task
             if (th->id != xTaskGetCurrentTaskHandle()) {
                 id = th->id;

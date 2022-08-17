@@ -33,7 +33,6 @@
 #include "inc/hw_types.h"
 #include "interrupt.h"
 #include "pybsleep.h"
-#include "mpexception.h"
 #include "mperror.h"
 #include "mpirq.h"
 
@@ -63,8 +62,7 @@ void mp_irq_init0 (void) {
 }
 
 mp_obj_t mp_irq_new (mp_obj_t parent, mp_obj_t handler, const mp_irq_methods_t *methods) {
-    mp_irq_obj_t *self = m_new_obj(mp_irq_obj_t);
-    self->base.type = &mp_irq_type;
+    mp_irq_obj_t *self = mp_obj_malloc(mp_irq_obj_t, &mp_irq_type);
     self->handler = handler;
     self->parent = parent;
     self->methods = (mp_irq_methods_t *)methods;
@@ -112,7 +110,7 @@ void mp_irq_remove (const mp_obj_t parent) {
 
 uint mp_irq_translate_priority (uint priority) {
     if (priority < 1 || priority > MP_ARRAY_SIZE(mp_irq_priorities)) {
-        mp_raise_ValueError(mpexception_value_invalid_arguments);
+        mp_raise_ValueError(MP_ERROR_TEXT("invalid argument(s) value"));
     }
     return mp_irq_priorities[priority - 1];
 }
@@ -199,3 +197,4 @@ const mp_obj_type_t mp_irq_type = {
     .locals_dict = (mp_obj_t)&mp_irq_locals_dict,
 };
 
+MP_REGISTER_ROOT_POINTER(mp_obj_list_t mp_irq_obj_list);

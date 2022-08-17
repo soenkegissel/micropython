@@ -69,7 +69,7 @@ void mp_unix_free_exec(void *ptr, size_t size) {
     munmap(ptr, size);
 
     // unlink the mmap'd region from the list
-    for (mmap_region_t **rg = (mmap_region_t**)&MP_STATE_VM(mmap_region_head); *rg != NULL; *rg = (*rg)->next) {
+    for (mmap_region_t **rg = (mmap_region_t **)&MP_STATE_VM(mmap_region_head); *rg != NULL; *rg = (*rg)->next) {
         if ((*rg)->ptr == ptr) {
             mmap_region_t *next = (*rg)->next;
             m_del_obj(mmap_region_t, *rg);
@@ -103,5 +103,7 @@ void ffi_closure_free(void *ptr) {
     // TODO
 }
 #endif
+
+MP_REGISTER_ROOT_POINTER(void *mmap_region_head);
 
 #endif // MICROPY_EMIT_NATIVE || (MICROPY_PY_FFI && MICROPY_FORCE_PLAT_ALLOC_EXEC)

@@ -4,7 +4,7 @@
 .. module:: esp
     :synopsis: functions related to the ESP8266 and ESP32
 
-The ``esp`` module contains specific functions related to both the ESP8266 and 
+The ``esp`` module contains specific functions related to both the ESP8266 and
 ESP32 modules.  Some functions are only available on one or the other of these
 ports.
 
@@ -31,7 +31,7 @@ Functions
 
     The system enters the set sleep mode automatically when possible.
 
-.. function:: deepsleep(time=0)
+.. function:: deepsleep(time_us=0, /)
 
     **Note**: ESP8266 only - use `machine.deepsleep()` on ESP32
 
@@ -61,6 +61,21 @@ Functions
 .. function:: flash_write(byte_offset, bytes)
 
 .. function:: flash_erase(sector_no)
+
+.. function:: osdebug(level)
+
+    Turn esp os debugging messages on or off.
+
+    The *level* parameter sets the threshold for the log messages for all esp components.
+    The log levels are defined as constants:
+
+        * ``LOG_NONE`` -- No log output
+        * ``LOG_ERROR`` -- Critical errors, software module can not recover on its own
+        * ``LOG_WARN`` -- Error conditions from which recovery measures have been taken
+        * ``LOG_INFO`` -- Information messages which describe normal flow of events
+        * ``LOG_DEBUG`` -- Extra information which is not necessary for normal use (values, pointers, sizes, etc)
+        * ``LOG_VERBOSE`` -- Bigger chunks of debugging information, or frequent messages
+          which can potentially flood the output
 
 .. function:: set_native_code_location(start, length)
 

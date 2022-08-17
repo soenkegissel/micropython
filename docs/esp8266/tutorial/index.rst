@@ -29,5 +29,7 @@ to `<https://www.python.org>`__.
    powerctrl.rst
    onewire.rst
    neopixel.rst
+   apa102.rst
    dht.rst
+   ssd1306.rst
    nextsteps.rst

@@ -30,6 +30,8 @@
 #define SDCARD_BLOCK_SIZE (512)
 
 void sdcard_init(void);
+void sdcard_select_sd(void);
+void sdcard_select_mmc(void);
 bool sdcard_is_present(void);
 bool sdcard_power_on(void);
 void sdcard_power_off(void);
@@ -40,6 +42,7 @@ mp_uint_t sdcard_read_blocks(uint8_t *dest, uint32_t block_num, uint32_t num_blo
 mp_uint_t sdcard_write_blocks(const uint8_t *src, uint32_t block_num, uint32_t num_blocks);
 
 extern const struct _mp_obj_type_t pyb_sdcard_type;
+extern const struct _mp_obj_type_t pyb_mmcard_type;
 extern const struct _mp_obj_base_t pyb_sdcard_obj;
 
 struct _fs_user_mount_t;

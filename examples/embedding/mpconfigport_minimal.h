@@ -45,7 +45,6 @@
 #define MICROPY_LONGINT_IMPL        (MICROPY_LONGINT_IMPL_NONE)
 #define MICROPY_STREAMS_NON_BLOCK   (0)
 #define MICROPY_OPT_COMPUTED_GOTO   (0)
-#define MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE (0)
 #define MICROPY_CAN_OVERRIDE_BUILTINS (0)
 #define MICROPY_BUILTIN_METHOD_CHECK_SELF_ARG (0)
 #define MICROPY_CPYTHON_COMPAT      (0)
@@ -76,35 +75,25 @@
 #define MICROPY_PY_SYS_EXIT         (0)
 #define MICROPY_PY_SYS_PLATFORM     "linux"
 #define MICROPY_PY_SYS_MAXSIZE      (0)
+#define MICROPY_PY_SYS_PATH_DEFAULT ".frozen"
 #define MICROPY_PY_SYS_STDFILES     (0)
 #define MICROPY_PY_CMATH            (0)
 #define MICROPY_PY_UCTYPES          (0)
 #define MICROPY_PY_UZLIB            (0)
 #define MICROPY_PY_UJSON            (0)
+#define MICROPY_PY_UOS              (1)
 #define MICROPY_PY_URE              (0)
 #define MICROPY_PY_UHEAPQ           (0)
 #define MICROPY_PY_UHASHLIB         (0)
 #define MICROPY_PY_UBINASCII        (0)
 
-extern const struct _mp_obj_module_t mp_module_os;
-
-#define MICROPY_PORT_BUILTIN_MODULES \
-    { MP_ROM_QSTR(MP_QSTR_uos), MP_ROM_PTR(&mp_module_os) }, \
-
-#define MICROPY_PORT_ROOT_POINTERS \
-
 //////////////////////////////////////////
 // Do not change anything beyond this line
 //////////////////////////////////////////
 
-// Define to 1 to use undertested inefficient GC helper implementation
-// (if more efficient arch-specific one is not available).
-#ifndef MICROPY_GCREGS_SETJMP
-    #ifdef __mips__
-        #define MICROPY_GCREGS_SETJMP (1)
-    #else
-        #define MICROPY_GCREGS_SETJMP (0)
-    #endif
+#if !(defined(MICROPY_GCREGS_SETJMP) || defined(__x86_64__) || defined(__i386__) || defined(__thumb2__) || defined(__thumb__) || defined(__arm__))
+// Fall back to setjmp() implementation for discovery of GC pointers in registers.
+#define MICROPY_GCREGS_SETJMP (1)
 #endif
 
 // type definitions for the specific machine

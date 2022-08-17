@@ -38,26 +38,11 @@
 
 #define SIGNED_FIT24(x) (((x) & 0xff800000) == 0) || (((x) & 0xff000000) == 0xff000000)
 
-void asm_arm_end_pass(asm_arm_t *as) {
-    if (as->base.pass == MP_ASM_PASS_EMIT) {
-#ifdef __arm__
-        // flush I- and D-cache
-        asm volatile(
-                "0:"
-                "mrc p15, 0, r15, c7, c10, 3\n"
-                "bne 0b\n"
-                "mov r0, #0\n"
-                "mcr p15, 0, r0, c7, c7, 0\n"
-                : : : "r0", "cc");
-#endif
-    }
-}
-
 // Insert word into instruction flow
 STATIC void emit(asm_arm_t *as, uint op) {
     uint8_t *c = mp_asm_base_get_cur_to_write_bytes(&as->base, 4);
     if (c != NULL) {
-        *(uint32_t*)c = op;
+        *(uint32_t *)c = op;
     }
 }
 
@@ -197,7 +182,16 @@ void asm_arm_mov_reg_reg(asm_arm_t *as, uint reg_dest, uint reg_src) {
     emit_al(as, asm_arm_op_mov_reg(reg_dest, reg_src));
 }
 
-void asm_arm_mov_reg_i32(asm_arm_t *as, uint rd, int imm) {
+size_t asm_arm_mov_reg_i32(asm_arm_t *as, uint rd, int imm) {
+    // Insert immediate into code and jump over it
+    emit_al(as, 0x59f0000 | (rd << 12)); // ldr rd, [pc]
+    emit_al(as, 0xa000000); // b pc
+    size_t loc = mp_asm_base_get_code_pos(&as->base);
+    emit(as, imm);
+    return loc;
+}
+
+void asm_arm_mov_reg_i32_optimised(asm_arm_t *as, uint rd, int imm) {
     // TODO: There are more variants of immediate values
     if ((imm & 0xFF) == imm) {
         emit_al(as, asm_arm_op_mov_imm(rd, imm));
@@ -205,10 +199,7 @@ void asm_arm_mov_reg_i32(asm_arm_t *as, uint rd, int imm) {
         // mvn is "move not", not "move negative"
         emit_al(as, asm_arm_op_mvn_imm(rd, ~imm));
     } else {
-        //Insert immediate into code and jump over it
-        emit_al(as, 0x59f0000 | (rd << 12)); // ldr rd, [pc]
-        emit_al(as, 0xa000000); // b pc
-        emit(as, imm);
+        asm_arm_mov_reg_i32(as, rd, imm);
     }
 }
 
@@ -293,6 +284,11 @@ void asm_arm_lsl_reg_reg(asm_arm_t *as, uint rd, uint rs) {
     emit_al(as, 0x1a00010 | (rd << 12) | (rs << 8) | rd);
 }
 
+void asm_arm_lsr_reg_reg(asm_arm_t *as, uint rd, uint rs) {
+    // mov rd, rd, lsr rs
+    emit_al(as, 0x1a00030 | (rd << 12) | (rs << 8) | rd);
+}
+
 void asm_arm_asr_reg_reg(asm_arm_t *as, uint rd, uint rs) {
     // mov rd, rd, asr rs
     emit_al(as, 0x1a00050 | (rd << 12) | (rs << 8) | rd);
@@ -306,6 +302,11 @@ void asm_arm_ldr_reg_reg(asm_arm_t *as, uint rd, uint rn, uint byte_offset) {
 void asm_arm_ldrh_reg_reg(asm_arm_t *as, uint rd, uint rn) {
     // ldrh rd, [rn]
     emit_al(as, 0x1d000b0 | (rn << 16) | (rd << 12));
+}
+
+void asm_arm_ldrh_reg_reg_offset(asm_arm_t *as, uint rd, uint rn, uint byte_offset) {
+    // ldrh rd, [rn, #off]
+    emit_al(as, 0x1f000b0 | (rn << 16) | (rd << 12) | ((byte_offset & 0xf0) << 4) | (byte_offset & 0xf));
 }
 
 void asm_arm_ldrb_reg_reg(asm_arm_t *as, uint rd, uint rn) {

@@ -31,7 +31,7 @@
 #include "py/objtuple.h"
 #include "py/objstr.h"
 #include "py/runtime.h"
-#include "lib/timeutils/timeutils.h"
+#include "shared/timeutils/timeutils.h"
 #include "lib/oofatfs/ff.h"
 #include "lib/oofatfs/diskio.h"
 #include "genhdr/mpversion.h"
@@ -40,7 +40,6 @@
 #include "extmod/vfs.h"
 #include "extmod/vfs_fat.h"
 #include "random.h"
-#include "mpexception.h"
 #include "version.h"
 #include "pybsd.h"
 #include "pybuart.h"
@@ -133,7 +132,7 @@ STATIC mp_obj_t os_dupterm(uint n_args, const mp_obj_t *args) {
         if (stream_o == mp_const_none) {
             MP_STATE_PORT(os_term_dup_obj) = MP_OBJ_NULL;
         } else {
-            if (!MP_OBJ_IS_TYPE(stream_o, &pyb_uart_type)) {
+            if (!mp_obj_is_type(stream_o, &pyb_uart_type)) {
                 // must be a stream-like object providing at least read and write methods
                 mp_load_method(stream_o, MP_QSTR_read, os_term_dup_obj.read);
                 mp_load_method(stream_o, MP_QSTR_write, os_term_dup_obj.write);
@@ -180,3 +179,5 @@ const mp_obj_module_t mp_module_uos = {
     .base = { &mp_type_module },
     .globals = (mp_obj_dict_t*)&os_module_globals,
 };
+
+MP_REGISTER_MODULE(MP_QSTR_uos, mp_module_uos);

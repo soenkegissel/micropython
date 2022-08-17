@@ -33,7 +33,6 @@
 #include "py/runtime.h"
 #include "modnetwork.h"
 #include "modusocket.h"
-#include "mpexception.h"
 
 /******************************************************************************
  DEFINE CONSTANTS
@@ -133,7 +132,7 @@ socket_error:
     mp_raise_OSError(_errno);
 
 arg_error:
-    mp_raise_ValueError(mpexception_value_invalid_arguments);
+    mp_raise_ValueError(MP_ERROR_TEXT("invalid argument(s) value"));
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(mod_ssl_wrap_socket_obj, 0, mod_ssl_wrap_socket);
 
@@ -162,3 +161,4 @@ const mp_obj_module_t mp_module_ussl = {
     .globals = (mp_obj_dict_t*)&mp_module_ussl_globals,
 };
 
+MP_REGISTER_MODULE(MP_QSTR_ussl, mp_module_ussl);

@@ -45,7 +45,6 @@
 #include "systick.h"
 #include "prcm.h"
 #include "pin.h"
-#include "mpexception.h"
 #include "telnet.h"
 #include "pybuart.h"
 #include "utils.h"
@@ -142,13 +141,9 @@ void mp_hal_delay_ms(mp_uint_t delay) {
     }
 }
 
-void mp_hal_stdout_tx_str(const char *str) {
-    mp_hal_stdout_tx_strn(str, strlen(str));
-}
-
 void mp_hal_stdout_tx_strn(const char *str, size_t len) {
     if (MP_STATE_PORT(os_term_dup_obj)) {
-        if (MP_OBJ_IS_TYPE(MP_STATE_PORT(os_term_dup_obj)->stream_o, &pyb_uart_type)) {
+        if (mp_obj_is_type(MP_STATE_PORT(os_term_dup_obj)->stream_o, &pyb_uart_type)) {
             uart_tx_strn(MP_STATE_PORT(os_term_dup_obj)->stream_o, str, len);
         } else {
             MP_STATE_PORT(os_term_dup_obj)->write[2] = mp_obj_new_str_of_type(&mp_type_str, (const byte *)str, len);
@@ -159,32 +154,13 @@ void mp_hal_stdout_tx_strn(const char *str, size_t len) {
     telnet_tx_strn(str, len);
 }
 
-void mp_hal_stdout_tx_strn_cooked (const char *str, size_t len) {
-    int32_t nslen = 0;
-    const char *_str = str;
-
-    for (int i = 0; i < len; i++) {
-        if (str[i] == '\n') {
-            mp_hal_stdout_tx_strn(_str, nslen);
-            mp_hal_stdout_tx_strn("\r\n", 2);
-            _str += nslen + 1;
-            nslen = 0;
-        } else {
-            nslen++;
-        }
-    }
-    if (_str < str + len) {
-        mp_hal_stdout_tx_strn(_str, nslen);
-    }
-}
-
 int mp_hal_stdin_rx_chr(void) {
     for ( ;; ) {
         // read telnet first
         if (telnet_rx_any()) {
             return telnet_rx_char();
         } else if (MP_STATE_PORT(os_term_dup_obj)) { // then the stdio_dup
-            if (MP_OBJ_IS_TYPE(MP_STATE_PORT(os_term_dup_obj)->stream_o, &pyb_uart_type)) {
+            if (mp_obj_is_type(MP_STATE_PORT(os_term_dup_obj)->stream_o, &pyb_uart_type)) {
                 if (uart_rx_any(MP_STATE_PORT(os_term_dup_obj)->stream_o)) {
                     return uart_rx_char(MP_STATE_PORT(os_term_dup_obj)->stream_o);
                 }
@@ -219,3 +195,5 @@ static void hal_TickInit (void) {
     MAP_SysTickEnable();
 }
 #endif
+
+MP_REGISTER_ROOT_POINTER(struct _os_term_dup_obj_t *os_term_dup_obj);

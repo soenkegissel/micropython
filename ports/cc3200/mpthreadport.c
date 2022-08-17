@@ -37,19 +37,19 @@
 #if MICROPY_PY_THREAD
 
 // this structure forms a linked list, one node per active thread
-typedef struct _thread_t {
+typedef struct _mp_thread_t {
     TaskHandle_t id;        // system id of thread
     int ready;              // whether the thread is ready and running
     void *arg;              // thread Python args, a GC root pointer
     void *stack;            // pointer to the stack
     size_t stack_len;       // number of words in the stack
-    struct _thread_t *next;
-} thread_t;
+    struct _mp_thread_t *next;
+} mp_thread_t;
 
 // the mutex controls access to the linked list
 STATIC mp_thread_mutex_t thread_mutex;
-STATIC thread_t thread_entry0;
-STATIC thread_t *thread; // root pointer, handled bp mp_thread_gc_others
+STATIC mp_thread_t thread_entry0;
+STATIC mp_thread_t *thread; // root pointer, handled bp mp_thread_gc_others
 
 void mp_thread_init(void) {
     mp_thread_mutex_init(&thread_mutex);
@@ -67,8 +67,8 @@ void mp_thread_init(void) {
 
 void mp_thread_gc_others(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
-        gc_collect_root((void**)&th, 1);
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
+        gc_collect_root((void **)&th, 1);
         gc_collect_root(&th->arg, 1); // probably not needed
         if (th->id == xTaskGetCurrentTaskHandle()) {
             continue;
@@ -85,13 +85,13 @@ mp_state_thread_t *mp_thread_get_state(void) {
     return pvTaskGetThreadLocalStoragePointer(NULL, 0);
 }
 
-void mp_thread_set_state(void *state) {
+void mp_thread_set_state(mp_state_thread_t *state) {
     vTaskSetThreadLocalStoragePointer(NULL, 0, state);
 }
 
 void mp_thread_start(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
         if (th->id == xTaskGetCurrentTaskHandle()) {
             th->ready = 1;
             break;
@@ -100,7 +100,7 @@ void mp_thread_start(void) {
     mp_thread_mutex_unlock(&thread_mutex);
 }
 
-STATIC void *(*ext_thread_entry)(void*) = NULL;
+STATIC void *(*ext_thread_entry)(void *) = NULL;
 
 STATIC void freertos_entry(void *arg) {
     if (ext_thread_entry) {
@@ -111,7 +111,7 @@ STATIC void freertos_entry(void *arg) {
     }
 }
 
-void mp_thread_create(void *(*entry)(void*), void *arg, size_t *stack_size) {
+void mp_thread_create(void *(*entry)(void *), void *arg, size_t *stack_size) {
     // store thread entry function into a global variable so we can access it
     ext_thread_entry = entry;
 
@@ -124,15 +124,15 @@ void mp_thread_create(void *(*entry)(void*), void *arg, size_t *stack_size) {
     // allocate TCB, stack and linked-list node (must be outside thread_mutex lock)
     StaticTask_t *tcb = m_new(StaticTask_t, 1);
     StackType_t *stack = m_new(StackType_t, *stack_size / sizeof(StackType_t));
-    thread_t *th = m_new_obj(thread_t);
+    mp_thread_t *th = m_new_obj(mp_thread_t);
 
     mp_thread_mutex_lock(&thread_mutex, 1);
 
     // create thread
-    TaskHandle_t id = xTaskCreateStatic(freertos_entry, "Thread", *stack_size / sizeof(void*), arg, 2, stack, tcb);
+    TaskHandle_t id = xTaskCreateStatic(freertos_entry, "Thread", *stack_size / sizeof(void *), arg, 2, stack, tcb);
     if (id == NULL) {
         mp_thread_mutex_unlock(&thread_mutex);
-        mp_raise_msg(&mp_type_OSError, "can't create thread");
+        mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("can't create thread"));
     }
 
     // add thread to linked list of all threads
@@ -153,7 +153,7 @@ void mp_thread_create(void *(*entry)(void*), void *arg, size_t *stack_size) {
 void mp_thread_finish(void) {
     mp_thread_mutex_lock(&thread_mutex, 1);
     // TODO unlink from list
-    for (thread_t *th = thread; th != NULL; th = th->next) {
+    for (mp_thread_t *th = thread; th != NULL; th = th->next) {
         if (th->id == xTaskGetCurrentTaskHandle()) {
             th->ready = 0;
             break;

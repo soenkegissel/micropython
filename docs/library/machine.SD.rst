@@ -1,8 +1,8 @@
 .. currentmodule:: machine
 .. _machine.SD:
 
-class SD -- secure digital memory card
-======================================
+class SD -- secure digital memory card (cc3200 port only)
+=========================================================
 
 .. warning::
 
@@ -32,7 +32,7 @@ Constructors
 
 .. class:: SD(id,... )
 
-   Create a SD card object. See ``init()`` for parameters if initialization. 
+   Create a SD card object. See ``init()`` for parameters if initialization.
 
 Methods
 -------

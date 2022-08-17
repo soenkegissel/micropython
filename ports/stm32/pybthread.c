@@ -28,21 +28,20 @@
 #include <stdio.h>
 
 #include "py/obj.h"
+#include "boardctrl.h"
 #include "gccollect.h"
 #include "irq.h"
 #include "pybthread.h"
 
 #if MICROPY_PY_THREAD
 
-#define PYB_MUTEX_UNLOCKED ((void*)0)
-#define PYB_MUTEX_LOCKED ((void*)1)
+#define PYB_MUTEX_UNLOCKED ((void *)0)
+#define PYB_MUTEX_LOCKED ((void *)1)
 
 // These macros are used when we only need to protect against a thread
 // switch; other interrupts are still allowed to proceed.
 #define RAISE_IRQ_PRI() raise_irq_pri(IRQ_PRI_PENDSV)
 #define RESTORE_IRQ_PRI(state) restore_irq_pri(state)
-
-extern void __fatal_error(const char*);
 
 volatile int pyb_thread_enabled;
 pyb_thread_t *volatile pyb_thread_all;
@@ -57,7 +56,7 @@ static inline void pyb_thread_add_to_runable(pyb_thread_t *thread) {
 
 static inline void pyb_thread_remove_from_runable(pyb_thread_t *thread) {
     if (thread->run_next == thread) {
-        __fatal_error("deadlock");
+        MICROPY_BOARD_FATAL_ERROR("deadlock");
     }
     thread->run_prev->run_next = thread->run_next;
     thread->run_next->run_prev = thread->run_prev;
@@ -70,8 +69,8 @@ void pyb_thread_init(pyb_thread_t *thread) {
     thread->sp = NULL; // will be set when this thread switches out
     thread->local_state = 0; // will be set by mp_thread_init
     thread->arg = NULL;
-    thread->stack = &_heap_end;
-    thread->stack_len = ((uint32_t)&_estack - (uint32_t)&_heap_end) / sizeof(uint32_t);
+    thread->stack = &_sstack;
+    thread->stack_len = ((uint32_t)&_estack - (uint32_t)&_sstack) / sizeof(uint32_t);
     thread->all_next = NULL;
     thread->run_prev = thread;
     thread->run_next = thread;
@@ -94,7 +93,7 @@ STATIC void pyb_thread_terminate(void) {
     // take current thread off the run list
     pyb_thread_remove_from_runable(thread);
     // take current thread off the list of all threads
-    for (pyb_thread_t **n = (pyb_thread_t**)&pyb_thread_all;; n = &(*n)->all_next) {
+    for (pyb_thread_t **n = (pyb_thread_t **)&pyb_thread_all;; n = &(*n)->all_next) {
         if (*n == thread) {
             *n = thread->all_next;
             break;
@@ -112,11 +111,11 @@ STATIC void pyb_thread_terminate(void) {
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
     enable_irq(irq_state);
     // should not return
-    __fatal_error("could not terminate");
+    MICROPY_BOARD_FATAL_ERROR("could not terminate");
 }
 
 uint32_t pyb_thread_new(pyb_thread_t *thread, void *stack, size_t stack_len, void *entry, void *arg) {
-    uint32_t *stack_top = (uint32_t*)stack + stack_len; // stack is full descending
+    uint32_t *stack_top = (uint32_t *)stack + stack_len; // stack is full descending
     *--stack_top = 0x01000000; // xPSR (thumb bit set)
     *--stack_top = (uint32_t)entry & 0xfffffffe; // pc (must have bit 0 cleared, even for thumb code)
     *--stack_top = (uint32_t)pyb_thread_terminate; // lr

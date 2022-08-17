@@ -5,11 +5,14 @@ CROSS = 0
 # qstr definitions (must come before including py.mk)
 QSTR_DEFS = qstrdefsport.h
 
+# MicroPython feature configurations
+MICROPY_ROM_TEXT_COMPRESSION ?= 1
+
 # include py core make definitions
 include $(TOP)/py/py.mk
 
 ifeq ($(CROSS), 1)
-CROSS_COMPILE = arm-none-eabi-
+CROSS_COMPILE ?= arm-none-eabi-
 endif
 
 INC += -I.
@@ -19,36 +22,58 @@ INC += -I$(BUILD)
 ifeq ($(CROSS), 1)
 DFU = $(TOP)/tools/dfu.py
 PYDFU = $(TOP)/tools/pydfu.py
-CFLAGS_CORTEX_M4 = -mthumb -mtune=cortex-m4 -mabi=aapcs-linux -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -fsingle-precision-constant -Wdouble-promotion
+CFLAGS_CORTEX_M4 = -mthumb -mtune=cortex-m4 -mcpu=cortex-m4 -msoft-float -fsingle-precision-constant -Wdouble-promotion -Wfloat-conversion
 CFLAGS = $(INC) -Wall -Werror -std=c99 -nostdlib $(CFLAGS_CORTEX_M4) $(COPT)
 LDFLAGS = -nostdlib -T stm32f405.ld -Map=$@.map --cref --gc-sections
 else
 LD = gcc
-CFLAGS = -m32 $(INC) -Wall -Werror -std=c99 $(COPT)
-LDFLAGS = -m32 -Wl,-Map=$@.map,--cref -Wl,--gc-sections
+CFLAGS = $(INC) -Wall -Werror -Wdouble-promotion -Wfloat-conversion -std=c99 $(COPT)
+LDFLAGS = -Wl,-Map=$@.map,--cref -Wl,--gc-sections
 endif
 
+CSUPEROPT = -Os # save some code space
+
 # Tune for Debugging or Optimization
+CFLAGS += -g  # always include debug info in the ELF
 ifeq ($(DEBUG), 1)
-CFLAGS += -O0 -ggdb
+CFLAGS += -O0
 else
 CFLAGS += -Os -DNDEBUG
 CFLAGS += -fdata-sections -ffunction-sections
 endif
+
+# Flags for optional C++ source code
+CXXFLAGS += $(filter-out -std=c99,$(CFLAGS))
+CXXFLAGS += $(CXXFLAGS_MOD)
+
+# Flags for user C modules
+CFLAGS += $(CFLAGS_MOD)
+LDFLAGS += $(LDFLAGS_MOD)
 
 LIBS =
 
 SRC_C = \
 	main.c \
 	uart_core.c \
-	lib/utils/printf.c \
-	lib/utils/stdout_helpers.c \
-	lib/utils/pyexec.c \
-	lib/libc/string0.c \
-	lib/mp-readline/readline.c \
+	shared/libc/printf.c \
+	shared/readline/readline.c \
+	shared/runtime/pyexec.c \
+	shared/runtime/stdout_helpers.c \
 	$(BUILD)/_frozen_mpy.c \
 
-OBJ = $(PY_CORE_O) $(addprefix $(BUILD)/, $(SRC_C:.c=.o))
+ifeq ($(CROSS), 1)
+SRC_C += shared/libc/string0.c
+endif
+
+SRC_C += $(SRC_MOD)
+
+SRC_CXX += $(SRC_MOD_CXX)
+
+SRC_QSTR += shared/readline/readline.c shared/runtime/pyexec.c
+SRC_QSTR += $(SRC_MOD) $(SRC_MOD_CXX)
+
+OBJ += $(PY_CORE_O) $(addprefix $(BUILD)/, $(SRC_C:.c=.o))
+OBJ += $(addprefix $(BUILD)/, $(SRC_CXX:.cpp=.o))
 
 ifeq ($(CROSS), 1)
 all: $(BUILD)/firmware.dfu
@@ -78,12 +103,11 @@ deploy: $(BUILD)/firmware.dfu
 
 # Run emulation build on a POSIX system with suitable terminal settings
 run:
-	stty raw opost -echo
-	build/firmware.elf
-	@echo Resetting terminal...
-# This sleep is useful to spot segfaults
-	sleep 1
-	reset
+	@saved_=`stty -g`; \
+	  stty raw opost -echo; \
+	  $(BUILD)/firmware.elf; \
+	  echo "Exit status: $$?"; \
+	  stty $$saved_
 
 test: $(BUILD)/firmware.elf
 	$(Q)/bin/echo -e "print('hello world!', list(x+1 for x in range(10)), end='eol\\\\n')\\r\\n\\x04" | $(BUILD)/firmware.elf | tail -n2 | grep "^hello world! \\[1, 2, 3, 4, 5, 6, 7, 8, 9, 10\\]eol"

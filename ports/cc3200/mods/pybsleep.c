@@ -49,7 +49,6 @@
 #include "modwlan.h"
 #include "osi.h"
 #include "debug.h"
-#include "mpexception.h"
 #include "mperror.h"
 #include "sleeprestore.h"
 #include "serverstask.h"
@@ -211,8 +210,7 @@ void pyb_sleep_signal_soft_reset (void) {
 }
 
 void pyb_sleep_add (const mp_obj_t obj, WakeUpCB_t wakeup) {
-    pyb_sleep_obj_t *sleep_obj = m_new_obj(pyb_sleep_obj_t);
-    sleep_obj->base.type = &pyb_sleep_type;
+    pyb_sleep_obj_t *sleep_obj = mp_obj_malloc(pyb_sleep_obj_t, &pyb_sleep_type);
     sleep_obj->obj = obj;
     sleep_obj->wakeup = wakeup;
     // remove it in case it was already registered
@@ -477,7 +475,7 @@ void pyb_sleep_suspend_exit (void) {
     MAP_IntPendSet(INT_PRCM);
 
     // force an exception to go back to the point where suspend mode was entered
-    nlr_raise(mp_obj_new_exception(&mp_type_SystemExit));
+    mp_raise_type(&mp_type_SystemExit);
 }
 
 STATIC void PRCMInterruptHandler (void) {
@@ -654,3 +652,4 @@ STATIC bool setup_timer_hibernate_wake (void) {
     return false;
 }
 
+MP_REGISTER_ROOT_POINTER(mp_obj_list_t pyb_sleep_obj_list);

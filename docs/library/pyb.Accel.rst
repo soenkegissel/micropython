@@ -16,10 +16,10 @@ Raw values are between -32 and 31.
 Constructors
 ------------
 
-.. class:: pyb.Accel()
+.. class:: Accel()
 
    Create and return an accelerometer object.
-   
+
 Methods
 -------
 
